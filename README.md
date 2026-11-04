@@ -17,8 +17,50 @@ Give it an OpenAPI/Swagger spec (or just a few URLs). It figures out how your en
 
 ---
 
+## 📸 Screenshots
+
+<div align="center">
+
+**Live dashboard — reasoning log, metrics and the full test-case matrix**
+
+<img src="docs/03-dashboard-results.png" alt="AutonomaPI dashboard after a completed run: metric cards, agent reasoning log and test case matrix" width="100%"/>
+
+</div>
+
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <b>1 · Load an API</b><br/>
+      <img src="docs/01-load-spec.png" alt="Empty dashboard with Spec URL, Upload File and Quick Test tabs"/>
+      <sub>Spec URL, file upload, or Quick Test</sub>
+    </td>
+    <td width="50%" align="center">
+      <b>2 · Spec analyzed, auth detected</b><br/>
+      <img src="docs/02-spec-analyzed.png" alt="ShopEase API parsed with 9 endpoints and a Bearer Token field"/>
+      <sub>9 endpoints found; only the credential the spec needs is requested</sub>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" align="center">
+      <b>3 · Failures &amp; critical leaks</b><br/>
+      <img src="docs/04-failed-and-critical-findings.png" alt="Test matrix filtered to failed cases showing Critical Leak verdicts"/>
+      <sub>Filter to what broke: attacks the API accepted are flagged <b>Critical Leak</b></sub>
+    </td>
+    <td width="50%" align="center">
+      <b>4 · Quick Test — no spec needed</b><br/>
+      <img src="docs/05-quick-test-mode.png" alt="Quick Test mode testing a single endpoint URL"/>
+      <sub>Paste a URL (method auto-detected) and go</sub>
+    </td>
+  </tr>
+</table>
+
+<sub>Screenshots show a run against the bundled <code>sample-api</code> (ShopEase); numbers vary run to run because payloads are randomized.</sub>
+
+---
+
 ## 📖 Table of Contents
 
+0. [Screenshots](#-screenshots)
 1. [What is AutonomaPI? (the 30-second version)](#-what-is-autonomapi-the-30-second-version)
 2. [What you get](#-what-you-get)
 3. [**How it works**](#-how-it-works)
@@ -302,7 +344,16 @@ Then in the AutonomaPI dashboard:
 2. Bearer token → `shopease-secret-token123` *(demo-only token)*
 3. Click **Launch Autonomous Test Run**
 
-🎯 **Expected result:** the auth-bypass case on `DELETE /products/{product_id}` is reported as **`critical_leak`**. The demo also exercises chaining: `POST /products → GET/PUT/DELETE /products/{id}` and `POST /products → POST /orders → GET/DELETE /orders/{id}`.
+🎯 **Expected result:** the auth-bypass case on `DELETE /products/{product_id}` is reported as **`critical_leak`**. The demo also exercises chaining: `POST /products → GET/PUT/DELETE /products/{id}`. (The `/orders` endpoints are a known gap: `POST /orders` needs a real `product_id` *in its body*, which AutonomaPI doesn't chain yet — see [Known limitations](#️-known-limitations).)
+
+### A second demo: PetStore (two different planted bugs)
+
+```bash
+cd sample-api
+python -m uvicorn petstore:app --port 9100
+```
+
+Spec URL `http://localhost:9100/openapi.json` · token `petstore-secret-token`. AutonomaPI should catch: **(1)** `PUT /pets/{id}` returns success but never saves (caught by the follow-up `GET` check), and **(2)** an error body that leaks a raw `SQLSTATE[...]` and a file path (caught by the response-body leak detector).
 
 ### Quick Test mode (no spec at all)
 
@@ -432,6 +483,7 @@ Honest scope, so you know what to expect:
 
 - **In-memory state.** Specs and runs live in process memory; restarting the backend clears them. Built for single-instance dev/demo use — add Redis or a DB before running multiple workers.
 - **Structured specs only.** PDF / Markdown / free-text API docs aren't parsed yet (JSON/YAML Swagger & OpenAPI, plus Quick Test).
+- **Chaining covers path parameters only.** Ids created by one endpoint are wired into *URL* path params (`/products/{product_id}`), but not into foreign-key fields inside a request *body* (e.g. `product_id` in `POST /orders`). Those get random values, so the setup call can be rejected and downstream cases on that resource may fail.
 - **Heuristic chaining.** Creators are found by resource name and `POST`/`GET` conventions; ids by `id`/`uuid`-like response fields. Unusual APIs may need Quick Test or may log failed setup calls.
 - **Black-box checks.** Verdicts rely on HTTP behavior; a `4xx` counts as correct rejection without inspecting the error body.
 - **Not a full pen-test.** The payload list and leak regexes are a solid baseline, not a replacement for a dedicated DAST/security audit.
@@ -441,6 +493,7 @@ Honest scope, so you know what to expect:
 
 - [ ] PDF / Markdown / free-text API documentation ingestion
 - [ ] Persistent run history (database) and multi-worker support
+- [ ] Chain created ids into request-body foreign-key fields (e.g. `POST /orders` → `product_id`)
 - [ ] CI mode: CLI runner with exit codes and JUnit/JSON output
 - [ ] OAuth2 token acquisition flows
 - [ ] More probes: rate limiting, mass assignment, cross-user IDOR
